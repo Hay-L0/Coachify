@@ -33,12 +33,19 @@ model Assessment {
   id              String        @id @default(cuid())
   userId          String
   user            User          @relation(fields: [userId], references: [id])
-  quizScore       Float
-  questions       Json[]
-  category        String
+  
+  quizScore       Float         
+  questions       Json[]       
+  category        String        
   improvementTip  String?
+  
+  // New useful fields
+  duration        Int?         
+  status          String        @default("completed")
+  
   createAt        DateTime      @default(now())
   updateAt        DateTime      @updatedAt
+
   @@index([userId])
 }
 model Resume {

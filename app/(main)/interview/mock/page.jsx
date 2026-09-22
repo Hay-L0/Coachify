@@ -1,28 +1,11 @@
-import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
-import Quiz from '../_components/quiz'
-
-const MockInterviewPage = () => {
-  return <div>
-    <div className='container mx-auto space-y-4 py-6'>
-      <Link href={'/interview'}>
-        <Button variant="link" className="gap-2 pl-0">
-          <ArrowLeft className='h-4 w-4' />
-          Back to interview Preparation
-        </Button>
-      </Link>
-
-      <div>
-        <h1 className='text-6xl font-bold gradient'>Mock Interview</h1>
-        <p className='text-muted-foreground'>
-          Test your knowledge with industry-specific questions
-        </p>
-      </div>
+export default function MockInterviewPage() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+      <h1 className="text-3xl font-bold mb-4">AI Interviewer Coming Soon</h1>
+      <p className="text-muted-foreground max-w-md">
+        We are currently rebuilding the interview system into a real conversational AI interviewer.
+        The old quiz version has been removed.
+      </p>
     </div>
-
-    <Quiz />
-  </div>
+  );
 }
-
-export default MockInterviewPage

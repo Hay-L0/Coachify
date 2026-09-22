@@ -2,9 +2,11 @@ import { industries } from "@/data/industries";
 import { getUserOnboardingStatus } from "@/actions/user";
 import { redirect } from "next/navigation";
 import OnboardingForm from "./_components/onboarding-form";
+import { checkUser } from "@/lib/checkUser";
 
 const OnboardingPage = async () => {
-  // Check if user is already onboarded
+  await checkUser();
+
   const { isOnboarded } = await getUserOnboardingStatus();
 
   if (isOnboarded) {
