@@ -7,86 +7,146 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 // Copy the rest of your models from the original schema.prisma
 model User {
-  id              String           @id @default(uuid())
-  ClerkUserId     String           @unique
-  email           String           @unique
-  name            String?
-  imageUrl        String?
-  industry        String?
-  industryInsight IndustryInsight? @relation("industry", fields: [industry], references: [industry])
-  createAt        DateTime         @default(now())
-  updateAt        DateTime         @updatedAt
-  bio             String?
-  experience      Int?
-  skills          String[]
-  assessments     Assessment[]
-  resume          Resume?
-  coverLetter     CoverLetter[]
+  id                String             @id @default(uuid())
+  ClerkUserId       String             @unique
+  email             String             @unique
+  name              String?
+  imageUrl          String?
+  industry          String?
+  industryInsight   IndustryInsight?   @relation("industry", fields: [industry], references: [industry])
+  createAt          DateTime           @default(now())
+  updateAt          DateTime           @updatedAt
+  bio               String?
+  experience        Int?
+  skills            String[]
+  assessments       Assessment[]
+  interviewSessions InterviewSession[]
+  resume            Resume?
+  coverLetter       CoverLetter[]
 }
+
 model Assessment {
-  id              String        @id @default(cuid())
-  userId          String
-  user            User          @relation(fields: [userId], references: [id])
-  
-  quizScore       Float         
-  questions       Json[]       
-  category        String        
-  improvementTip  String?
-  
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  quizScore      Float
+  questions      Json[]
+  category       String
+  improvementTip String?
+
   // New useful fields
-  duration        Int?         
-  status          String        @default("completed")
-  
-  createAt        DateTime      @default(now())
-  updateAt        DateTime      @updatedAt
+  duration Int?
+  status   String @default("completed")
+
+  createAt DateTime @default(now())
+  updateAt DateTime @updatedAt
 
   @@index([userId])
 }
+
+model InterviewSession {
+  id String @id @default(cuid())
+
+  userId String
+  user User @relation(fields: [userId], references: [id])
+
+  jobTitle String
+  companyName String?
+  interviewType String
+  difficulty String
+
+  status String @default("IN_PROGRESS")
+
+  overallScore Float?
+  technicalScore Float?
+  communicationScore Float?
+  problemSolvingScore Float?
+
+  currentTopic String?
+  topicsCovered Json?
+  strengths Json?
+  weaknesses Json?
+  followUpNeeded Boolean @default(false)
+  interviewPhase String?
+
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+
+  messages InterviewMessage[]
+
+  @@index([userId])
+}
+
+model InterviewMessage {
+  id String @id @default(cuid())
+
+  sessionId String
+  session   InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role    String
+  content String @db.Text
+
+  score    Float?
+  feedback String?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
+
 model Resume {
-  id              String        @id @default(cuid())
-  userId          String        @unique
-  user            User          @relation(fields: [userId], references: [id])
-  content         String        @db.Text
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model CoverLetter {
-  id            String   @id @default(uuid())
-  content       String
+  id             String   @id @default(uuid())
+  content        String
   jobDescription String
-  companyName   String
-  jobTitle      String
-  status        String   @default("draft")
-  userId        String
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id])
+  companyName    String
+  jobTitle       String
+  status         String   @default("draft")
+  userId         String
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
 }
+
 model IndustryInsight {
-  id              String           @id @default(cuid())
-  industry        String           @unique
-  users           User[]           @relation("industry")
-  salaryRanges    Json[]
-  growthRate      Float
-  demandLevel     DemandLevel
-  topSkills       String[]
-  marketOutlook   MarketOutlook
-  keyTrends       String[]
+  id                String        @id @default(cuid())
+  industry          String        @unique
+  users             User[]        @relation("industry")
+  salaryRanges      Json[]
+  growthRate        Float
+  demandLevel       DemandLevel
+  topSkills         String[]
+  marketOutlook     MarketOutlook
+  keyTrends         String[]
   recommendedSkills String[]
-  lastUpdated     DateTime         @default(now())
-  nextUpdate      DateTime
+  lastUpdated       DateTime      @default(now())
+  nextUpdate        DateTime
+
   @@index([industry])
 }
+
 enum DemandLevel {
   HIGH
   MEDIUM
   LOW
 }
+
 enum MarketOutlook {
   POSITIVE
   NEUTRAL

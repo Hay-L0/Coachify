@@ -1,33 +1,128 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+
+import { useSearchParams, useRouter } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
 import { Textarea } from "@/components/ui/textarea";
-import { startInterview, submitAnswer } from "@/actions/interview";
-import { toast } from "sonner";
+
 import { Loader2 } from "lucide-react";
 
+import { toast } from "sonner";
+
 export default function InterviewSessionPage() {
+  const searchParams = useSearchParams();
+
+  const hasStartedRef = useRef(false);
+
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+
+  const sessionId = searchParams.get("id");
+
   const [session, setSession] = useState(null);
   const [answer, setAnswer] = useState("");
-  const [isComplete, setIsComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleStart = async () => {
-    try {
-      setLoading(true);
-      const newSession = await startInterview({ category: "Technical" });
-      setSession(newSession);
-      toast.success("Interview started");
-    } catch (error) {
-      toast.error(error.message || "Failed to start interview");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!sessionId) {
+      router.push("/interview");
+      return;
     }
-  };
+
+    const loadSession = async () => {
+      try {
+        const response = await fetch(
+          `/api/interview/session?id=${sessionId}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Failed to load interview"
+          );
+        }
+
+        // If this is a brand-new interview,
+        // ask the Python AI service for the first question.
+        if (data.messages?.length === 0) {
+          // Prevent React Strict Mode from starting
+          // the same interview twice during development.
+          if (hasStartedRef.current) {
+            return;
+          }
+
+          hasStartedRef.current = true;
+
+          const startResponse = await fetch(
+            "http://127.0.0.1:8000/interview/start",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                sessionId,
+                answer: "",
+              }),
+            }
+          );
+
+          const startData = await startResponse.json();
+
+          if (!startResponse.ok) {
+            throw new Error(
+              startData.error ||
+                "Failed to start AI interview"
+            );
+          }
+
+          // Reload the session so the new
+          // interviewer message appears.
+          const updatedResponse = await fetch(
+            `/api/interview/session?id=${sessionId}`
+          );
+
+          const updatedData =
+            await updatedResponse.json();
+
+          if (!updatedResponse.ok) {
+            throw new Error(
+              updatedData.error ||
+                "Failed to reload interview"
+            );
+          }
+
+          setSession(updatedData);
+        } else {
+          setSession(data);
+        }
+      } catch (error) {
+        console.error(error);
+
+        toast.error(
+          error.message ||
+            "Failed to load interview"
+        );
+
+        router.push("/interview");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSession();
+  }, [sessionId, router]);
 
   const handleSubmitAnswer = async () => {
     if (!answer.trim()) {
@@ -36,121 +131,177 @@ export default function InterviewSessionPage() {
     }
 
     try {
-      setLoading(true);
-      const result = await submitAnswer({
-        messages: session.messages,
-        answer: answer.trim(),
-      });
+      setSubmitting(true);
 
-      setSession({
-        ...session,
-        messages: result.messages,
-      });
-      setAnswer("");
+      const response = await fetch(
+        "http://127.0.0.1:8000/interview",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId,
+            answer,
+          }),
+        }
+      );
 
-      if (result.isComplete) {
-        setIsComplete(true);
-        toast.success("Interview completed!");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Failed to submit answer"
+        );
       }
+
+      const sessionResponse = await fetch(
+        `/api/interview/session?id=${sessionId}`
+      );
+
+      const sessionData =
+        await sessionResponse.json();
+
+      if (!sessionResponse.ok) {
+        throw new Error(
+          sessionData.error ||
+            "Failed to reload interview"
+        );
+      }
+
+      setSession(sessionData);
+      setAnswer("");
     } catch (error) {
-      toast.error(error.message || "Failed to submit answer");
+      console.error(error);
+
+      toast.error(
+        error.message ||
+          "Failed to submit answer"
+      );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">AI Interview Session</h1>
+        <h1 className="text-3xl font-bold">
+          {session.jobTitle} Interview
+        </h1>
+
         <p className="text-muted-foreground mt-1">
-          Answer the questions as you would in a real interview.
+          {session.interviewType} • {session.difficulty}
+
+          {session.companyName &&
+            ` • ${session.companyName}`}
         </p>
       </div>
 
-      {!session ? (
+      {/* Conversation */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Interview Conversation
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4 max-h-[500px] overflow-y-auto">
+          {session.messages?.length === 0 ? (
+            <p className="text-muted-foreground">
+              Your interviewer will ask the first question shortly.
+            </p>
+          ) : (
+            session.messages.map((message) => (
+              <div
+                key={message.id}
+                className={`p-4 rounded-lg ${
+                  message.role === "assistant"
+                    ? "bg-muted"
+                    : "bg-primary/10 ml-8"
+                }`}
+              >
+                <p className="text-sm font-medium mb-1">
+                  {message.role === "assistant"
+                    ? "Interviewer"
+                    : "You"}
+                </p>
+
+                <p>{message.content}</p>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Answer */}
+      {session.status === "IN_PROGRESS" && (
         <Card>
-          <CardHeader>
-            <CardTitle>Start Interview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={handleStart} disabled={loading} size="lg">
-              {loading ? (
+          <CardContent className="pt-6 space-y-4">
+            <Textarea
+              placeholder="Type your answer here..."
+              value={answer}
+              onChange={(event) =>
+                setAnswer(event.target.value)
+              }
+              rows={5}
+              disabled={submitting}
+            />
+
+            <Button
+              onClick={handleSubmitAnswer}
+              disabled={
+                submitting || !answer.trim()
+              }
+            >
+              {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Starting...
+                  Thinking...
                 </>
               ) : (
-                "Start Interview"
+                "Submit Answer"
               )}
             </Button>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-6">
-          {/* Conversation */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Conversation</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 max-h-[400px] overflow-y-auto">
-              {session.messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`p-3 rounded-lg ${
-                    msg.role === "assistant"
-                      ? "bg-muted"
-                      : "bg-primary/10 ml-8"
-                  }`}
-                >
-                  <p className="text-sm font-medium mb-1">
-                    {msg.role === "assistant" ? "Interviewer" : "You"}
-                  </p>
-                  <p>{msg.content}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+      )}
 
-          {/* Answer Box */}
-          {!isComplete ? (
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <Textarea
-                  placeholder="Type your answer here..."
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  rows={4}
-                />
-                <Button
-                  onClick={handleSubmitAnswer}
-                  disabled={loading || !answer.trim()}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Thinking...
-                    </>
-                  ) : (
-                    "Submit Answer"
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-8 text-center">
-                <h3 className="text-xl font-semibold mb-2">Interview Complete</h3>
-                <p className="text-muted-foreground mb-4">
-                  Next we will add scoring and feedback.
-                </p>
-                <Button onClick={() => router.push("/interview")}>
-                  Back to Interviews
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+      {/* Completed */}
+      {session.status === "COMPLETED" && (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <h3 className="text-xl font-semibold mb-2">
+              Interview Complete
+            </h3>
+
+            <p className="text-muted-foreground mb-4">
+              Your interview has been completed.
+            </p>
+
+            <Button
+              onClick={() =>
+                router.push("/interview")
+              }
+            >
+              Back to Interviews
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

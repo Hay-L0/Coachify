@@ -1,63 +1,158 @@
-import { getAssessments } from "@/actions/interview";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
 
-export default async function InterviewPage() {
-  const assessments = await getAssessments();
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+export default function InterviewPage() {
+  const router = useRouter();
+
+  const [jobTitle, setJobTitle] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [interviewType, setInterviewType] = useState("TECHNICAL");
+  const [difficulty, setDifficulty] = useState("MEDIUM");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const startInterview = async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/interview/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jobTitle,
+          companyName,
+          interviewType,
+          difficulty,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to start interview");
+      }
+
+      router.push(`/interview/session?id=${data.id}`);
+    } catch (error) {
+      console.error(error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">AI Interviewer</h1>
-          <p className="text-muted-foreground mt-1">
-            Practice real interviews with an AI that adapts to your answers.
-          </p>
-        </div>
-
-        <Link href="/interview/session">
-          <Button size="lg">Start New Interview</Button>
-        </Link>
-      </div>
-
-      {/* Past Interviews */}
+    <div className="space-y-8 max-w-4xl mx-auto">
       <div>
-        <h2 className="text-xl font-semibold mb-4">Past Interviews</h2>
+        <h1 className="text-3xl font-bold">AI Interviewer</h1>
 
-        {assessments.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-muted-foreground">
-              You haven’t completed any interviews yet.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {assessments.map((assessment) => (
-              <Card key={assessment.id}>
-                <CardHeader>
-                  <CardTitle className="text-lg">
-                    {assessment.category} Interview
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-bold">
-                    {assessment.quizScore?.toFixed(1) || 0}%
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {new Date(assessment.createAt).toLocaleDateString()}
-                  </p>
-                  {assessment.improvementTip && (
-                    <p className="text-sm mt-3 text-muted-foreground">
-                      {assessment.improvementTip}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        <p className="text-muted-foreground mt-1">
+          Practice real interviews with an AI that adapts to your answers.
+        </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Set Up Your Interview</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Job Title */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Job Title
+            </label>
+
+            <input
+              type="text"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g. Frontend Engineer"
+              className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2"
+            />
+          </div>
+
+          {/* Company */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Company
+              <span className="text-muted-foreground ml-1">
+                (optional)
+              </span>
+            </label>
+
+            <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="e.g. Google"
+              className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2"
+            />
+          </div>
+
+          {/* Interview Type */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Interview Type
+            </label>
+
+            <select
+              value={interviewType}
+              onChange={(e) => setInterviewType(e.target.value)}
+              className="w-full rounded-md border px-3 py-2"
+            >
+              <option value="TECHNICAL">Technical</option>
+              <option value="BEHAVIORAL">Behavioral</option>
+              <option value="MIXED">Mixed</option>
+            </select>
+          </div>
+
+          {/* Difficulty */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Difficulty
+            </label>
+
+            <select
+              value={difficulty}
+              onChange={(e) => setDifficulty(e.target.value)}
+              className="w-full rounded-md border px-3 py-2"
+            >
+              <option value="EASY">Easy</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HARD">Hard</option>
+            </select>
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-500">
+              {error}
+            </p>
+          )}
+
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={startInterview}
+            disabled={loading || !jobTitle}
+          >
+            {loading ? "Starting Interview..." : "Start Interview"}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

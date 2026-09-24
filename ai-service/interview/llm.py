@@ -1,0 +1,365 @@
+import json
+import os
+import time
+
+from dotenv import load_dotenv
+from google import genai
+
+
+load_dotenv()
+
+
+class LLMProvider:
+
+    def generate_response(self, state):
+        raise NotImplementedError
+
+
+class GeminiProvider(LLMProvider):
+
+    def __init__(self):
+
+        self.api_key = os.getenv("GEMINI_API_KEY")
+
+        self.use_mock = (
+            os.getenv("USE_MOCK_LLM", "false").lower()
+            == "true"
+        )
+
+        if not self.use_mock:
+
+            if not self.api_key:
+                raise RuntimeError(
+                    "GEMINI_API_KEY is not configured"
+                )
+
+            self.client = genai.Client(
+                api_key=self.api_key
+            )
+
+    def generate_response(self, state):
+
+        if self.use_mock:
+            return self._mock_response(state)
+
+        return self._gemini_response(state)
+
+    def _mock_response(self, state):
+
+        user_messages = [
+            message
+            for message in state.messages
+            if message["role"] == "user"
+        ]
+
+        questions_asked = len(user_messages)
+
+        # Opening
+        if questions_asked == 0:
+
+            return {
+                "action": "NEXT_TOPIC",
+                "response": (
+                    "Hi, I'm Jabari, your AI interviewer. "
+                    "Thanks for joining me today. "
+                    "Let's start with your background. "
+                    "Can you briefly tell me about yourself "
+                    "and your recent experience?"
+                ),
+                "currentTopic": "Introduction",
+                "topicsCovered": [],
+                "strengths": [],
+                "weaknesses": [],
+                "followUpNeeded": False,
+            }
+
+        latest_answer = user_messages[-1]["content"].strip()
+        lower_answer = latest_answer.lower()
+
+        conversational_signals = [
+            "nervous",
+            "scared",
+            "anxious",
+            "worried",
+            "first interview",
+            "not sure",
+        ]
+
+        if any(
+            signal in lower_answer
+            for signal in conversational_signals
+        ):
+
+            return {
+                "action": "CONVERSATIONAL",
+                "response": (
+                    "That's completely fine. Take your time. "
+                    "Let's ease into it. Could you tell me "
+                    "about a recent project you've worked on?"
+                ),
+                "currentTopic": "Introduction",
+                "topicsCovered": state.topics_covered,
+                "strengths": state.strengths,
+                "weaknesses": state.weaknesses,
+                "followUpNeeded": False,
+            }
+
+        # Very short answers need clarification.
+        if len(latest_answer.split()) <= 4:
+
+            return {
+                "action": "CLARIFICATION",
+                "response": (
+                    "Could you elaborate on that and give me "
+                    "a little more detail?"
+                ),
+                "currentTopic": state.current_topic,
+                "topicsCovered": state.topics_covered,
+                "strengths": state.strengths,
+                "weaknesses": state.weaknesses,
+                "followUpNeeded": True,
+            }
+
+        technical_signals = [
+            "react",
+            "next.js",
+            "nextjs",
+            "javascript",
+            "typescript",
+            "python",
+            "fastapi",
+            "api",
+            "database",
+            "postgres",
+            "sql",
+            "backend",
+            "frontend",
+            "architecture",
+        ]
+
+        project_signals = [
+            "project",
+            "application",
+            "app",
+            "built",
+            "developed",
+            "implemented",
+            "feature",
+        ]
+
+        if any(
+            signal in lower_answer
+            for signal in technical_signals
+        ):
+
+            return {
+                "action": "DEEPER_PROBE",
+                "response": (
+                    "That's interesting. Let's go a little deeper. "
+                    "What was the most challenging technical problem "
+                    "you faced in that situation, and how did you "
+                    "approach solving it?"
+                ),
+                "currentTopic": "Technical Problem Solving",
+                "topicsCovered": [
+                    *state.topics_covered,
+                    "Technical Problem Solving",
+                ],
+                "strengths": state.strengths,
+                "weaknesses": state.weaknesses,
+                "followUpNeeded": True,
+            }
+
+        if any(
+            signal in lower_answer
+            for signal in project_signals
+        ):
+
+            return {
+                "action": "FOLLOW_UP",
+                "response": (
+                    "Tell me more about that. What was the most "
+                    "difficult part of building it, and what did "
+                    "you personally do to solve the problem?"
+                ),
+                "currentTopic": "Project Experience",
+                "topicsCovered": [
+                    *state.topics_covered,
+                    "Project Experience",
+                ],
+                "strengths": state.strengths,
+                "weaknesses": state.weaknesses,
+                "followUpNeeded": True,
+            }
+
+        # Continue probing during the early interview.
+        if questions_asked <= 4:
+
+            return {
+                "action": "FOLLOW_UP",
+                "response": (
+                    "Can you give me a specific example that "
+                    "demonstrates that?"
+                ),
+                "currentTopic": state.current_topic,
+                "topicsCovered": state.topics_covered,
+                "strengths": state.strengths,
+                "weaknesses": state.weaknesses,
+                "followUpNeeded": True,
+            }
+
+        # Mock completion.
+        return {
+            "action": "COMPLETE",
+            "response": (
+                "Thanks. That gives me a good picture of your "
+                "experience. That concludes the interview."
+            ),
+            "currentTopic": "Interview Complete",
+            "topicsCovered": state.topics_covered,
+            "strengths": state.strengths,
+            "weaknesses": state.weaknesses,
+            "followUpNeeded": False,
+        }
+
+    def _gemini_response(self, state):
+
+        conversation = "\n".join(
+            [
+                f'{message["role"].upper()}: '
+                f'{message["content"]}'
+                for message in state.messages
+            ]
+        )
+
+        candidate_context = f"""
+Candidate name:
+{state.candidate_name or "Not provided"}
+
+Candidate bio:
+{state.candidate_bio or "Not provided"}
+
+Years of experience:
+{
+    state.candidate_experience
+    if state.candidate_experience is not None
+    else "Not provided"
+}
+
+Skills:
+{json.dumps(state.candidate_skills)}
+
+Resume:
+{state.resume_content or "No resume provided"}
+
+Company:
+{state.company_name or "Not provided"}
+
+Target role:
+{state.job_title}
+"""
+
+        prompt = f"""
+You are Jabari, an adaptive AI interviewer.
+
+You are conducting a {state.interview_type}
+interview for the role of {state.job_title}.
+
+Difficulty:
+{state.difficulty}
+
+Candidate context:
+{candidate_context}
+
+Your job is to conduct a realistic conversational interview.
+
+You must NOT follow a fixed question list.
+
+Instead, analyze the candidate's latest response and
+decide what would produce the most useful next interaction.
+
+You may:
+
+- acknowledge conversational comments
+- ask for clarification
+- ask a follow-up question
+- probe deeper into an answer
+- move to a new topic
+- complete the interview
+
+Do not ask multiple interview questions at once.
+
+Do not pretend to have human emotions.
+
+Use the candidate's previous answers and candidate
+context when deciding what to ask next.
+
+If the candidate has relevant experience in their resume,
+use that information to create relevant follow-up questions.
+
+If the candidate mentions a technology, project, skill,
+or experience that is relevant to the target role, explore
+it when appropriate.
+
+If the candidate says something that appears to conflict
+with their resume, do not accuse them of lying. Ask a
+neutral clarification question.
+
+The interview should feel adaptive rather than scripted.
+
+Current topic:
+{state.current_topic}
+
+Topics already covered:
+{json.dumps(state.topics_covered)}
+
+Conversation:
+{conversation}
+
+Return ONLY valid JSON using exactly this structure:
+
+{{
+    "action": "CONVERSATIONAL | CLARIFICATION | FOLLOW_UP | DEEPER_PROBE | NEXT_TOPIC | COMPLETE",
+    "response": "Jabari's response",
+    "currentTopic": "current topic",
+    "topicsCovered": [],
+    "strengths": [],
+    "weaknesses": [],
+    "followUpNeeded": false
+}}
+"""
+
+        for attempt in range(3):
+
+            try:
+
+                response = self.client.models.generate_content(
+                    model="gemini-3.8-flash",
+                    contents=prompt,
+                )
+
+                text = response.text.strip()
+
+                if text.startswith("```"):
+
+                    text = (
+                        text
+                        .replace("```json", "")
+                        .replace("```", "")
+                        .strip()
+                    )
+
+                result = json.loads(text)
+
+                return result
+
+            except Exception as error:
+
+                if attempt == 2:
+                    raise error
+
+                time.sleep(2 ** attempt)
+
+        raise RuntimeError(
+            "Failed to generate Gemini response"
+        )
