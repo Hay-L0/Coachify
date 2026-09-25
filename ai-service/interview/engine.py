@@ -1,5 +1,9 @@
 from .state import InterviewState
 from .llm import LLMProvider
+from rag.retriever import (
+    KnowledgeRetriever,
+    format_retrieved_context,
+)
 
 
 class InterviewEngine:
@@ -8,34 +12,107 @@ class InterviewEngine:
         self,
         state: InterviewState,
         llm: LLMProvider,
+        retriever=None,
     ):
 
         self.state = state
         self.llm = llm
 
+        self.retriever = (
+            retriever
+            or KnowledgeRetriever()
+        )
+
+    def _build_retrieval_query(self, answer):
+
+        recent_messages = self.state.messages[-6:]
+
+        conversation_context = "\n".join(
+            [
+                f'{message["role"].upper()}: '
+                f'{message["content"]}'
+                for message in recent_messages
+            ]
+        )
+
+        return f"""
+Target role:
+{self.state.job_title}
+
+Interview type:
+{self.state.interview_type}
+
+Current interview topic:
+{self.state.current_topic or "Not yet established"}
+
+Topics already covered:
+{", ".join(self.state.topics_covered) or "None"}
+
+Recent conversation:
+{conversation_context}
+
+Candidate's latest answer:
+{answer}
+
+Retrieve knowledge that is relevant to understanding
+the candidate's latest answer and continuing the interview.
+
+Prioritize information about:
+
+- relevant candidate experience
+- projects
+- technologies
+- responsibilities
+- skills
+- job requirements
+- experience gaps that are relevant to the current topic
+""".strip()
+
     def process_answer(self, answer):
 
-        # Store the candidate's answer in memory.
+        answer = answer.strip()
+
+        if not answer:
+            raise ValueError(
+                "Interview answer cannot be empty"
+            )
+
         self.state.messages.append({
             "role": "user",
             "content": answer,
         })
 
-        # A question is considered answered when the
-        # candidate sends a response.
         self.state.questions_asked += 1
 
-        # Update the broad interview phase.
         self.state.interview_phase = (
             self.state._determine_phase()
         )
 
-        # Ask Jabari what should happen next.
-        result = self.llm.generate_response(
-            self.state
+        retrieval_query = (
+            self._build_retrieval_query(
+                answer
+            )
         )
 
-        # Apply Jabari's structured decision.
+        retrieved_results = (
+            self.retriever.retrieve(
+                session_id=self.state.session_id,
+                query=retrieval_query,
+                limit=5,
+            )
+        )
+
+        retrieved_context = (
+            format_retrieved_context(
+                retrieved_results
+            )
+        )
+
+        result = self.llm.generate_response(
+            self.state,
+            retrieved_context=retrieved_context,
+        )
+
         action = result.get(
             "action",
             "NEXT_TOPIC",
@@ -71,8 +148,6 @@ class InterviewEngine:
             "",
         )
 
-        # Store Jabari's response in the in-memory
-        # conversation.
         self.state.messages.append({
             "role": "assistant",
             "content": response,

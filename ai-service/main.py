@@ -12,6 +12,8 @@ from interview.repository import (
 )
 from interview.llm import GeminiProvider
 
+from rag.ingestion import KnowledgeIngestionService
+
 
 app = FastAPI()
 
@@ -29,14 +31,12 @@ app.add_middleware(
 
 
 class InterviewRequest(BaseModel):
-
     sessionId: str
     answer: str
 
 
 @app.get("/")
 def root():
-
     return {
         "message": "Coachify AI service is running"
     }
@@ -52,18 +52,15 @@ def start_interview(
     )
 
     if not session:
-
         return {
             "error": "Interview session not found"
         }
 
     if session["status"] != "IN_PROGRESS":
-
         return {
             "error": "Interview is not active"
         }
 
-    # Prevent duplicate interview starts.
     if len(session["messages"]) > 0:
 
         first_message = next(
@@ -76,7 +73,6 @@ def start_interview(
         )
 
         if first_message:
-
             return {
                 "response": first_message["content"],
                 "alreadyStarted": True,
@@ -86,22 +82,27 @@ def start_interview(
             "error": "Interview has already started"
         }
 
-    # Build the initial interview state.
-    #
-    # This includes both interview information and
-    # candidate information retrieved from the database.
+    ingestion = KnowledgeIngestionService()
+
+    ingestion.ingest_session_context(
+        session_id=request.sessionId,
+        user_id=session["userId"],
+        resume_content=session["resumeContent"],
+        job_description=session["jobDescription"],
+    )
+
     state = InterviewState(
+        session_id=request.sessionId,
         job_title=session["jobTitle"],
         company_name=session["companyName"],
+        job_description=session["jobDescription"],
         interview_type=session["interviewType"],
         difficulty=session["difficulty"],
-
         candidate_name=session["candidateName"],
         candidate_bio=session["candidateBio"],
         candidate_experience=session["candidateExperience"],
         candidate_skills=session["candidateSkills"],
         resume_content=session["resumeContent"],
-
         messages=[],
         current_topic=session["currentTopic"],
         topics_covered=session["topicsCovered"],
@@ -111,7 +112,6 @@ def start_interview(
         interview_phase=session["interviewPhase"],
     )
 
-    # Ask Jabari to generate the opening response.
     llm = GeminiProvider()
 
     result = llm.generate_response(
@@ -120,7 +120,6 @@ def start_interview(
 
     response = result["response"]
 
-    # Apply Jabari's structured state decisions.
     state.current_topic = result.get(
         "currentTopic",
         state.current_topic,
@@ -146,14 +145,12 @@ def start_interview(
         state.follow_up_needed,
     )
 
-    # Save Jabari's opening message.
     create_interview_message(
         request.sessionId,
         "assistant",
         response,
     )
 
-    # Save the initial interview state.
     update_interview_state(
         request.sessionId,
         state.current_topic,
@@ -184,31 +181,27 @@ def interview(
     )
 
     if not session:
-
         return {
             "error": "Interview session not found"
         }
 
     if session["status"] != "IN_PROGRESS":
-
         return {
             "error": "Interview is not active"
         }
 
-    # Rebuild the complete interview state from
-    # the database on every request.
     state = InterviewState(
+        session_id=request.sessionId,
         job_title=session["jobTitle"],
         company_name=session["companyName"],
+        job_description=session["jobDescription"],
         interview_type=session["interviewType"],
         difficulty=session["difficulty"],
-
         candidate_name=session["candidateName"],
         candidate_bio=session["candidateBio"],
         candidate_experience=session["candidateExperience"],
         candidate_skills=session["candidateSkills"],
         resume_content=session["resumeContent"],
-
         messages=session["messages"],
         current_topic=session["currentTopic"],
         topics_covered=session["topicsCovered"],
@@ -218,27 +211,23 @@ def interview(
         interview_phase=session["interviewPhase"],
     )
 
-    # Create the interview engine.
     engine = InterviewEngine(
         state,
         GeminiProvider(),
     )
 
-    # Let the engine process the candidate's answer.
     result = engine.process_answer(
         request.answer
     )
 
     response = result["response"]
 
-    # Save the candidate's answer.
     create_interview_message(
         request.sessionId,
         "user",
         request.answer,
     )
 
-    # Save the updated interview state.
     update_interview_state(
         request.sessionId,
         state.current_topic,
@@ -249,17 +238,13 @@ def interview(
         state.interview_phase,
     )
 
-    # Save Jabari's response.
     create_interview_message(
         request.sessionId,
         "assistant",
         response,
     )
 
-    # Jabari explicitly decides when the interview
-    # should be completed.
     if result["action"] == "COMPLETE":
-
         complete_interview_session(
             request.sessionId
         )

@@ -17,6 +17,7 @@ def get_interview_session(session_id):
                     i."userId",
                     i."jobTitle",
                     i."companyName",
+                    i."jobDescription",
                     i."interviewType",
                     i.difficulty,
                     i.status,
@@ -85,45 +86,50 @@ def get_interview_session(session_id):
             return {
                 "id": row[0],
                 "userId": row[1],
+
                 "jobTitle": row[2],
                 "companyName": row[3],
-                "interviewType": row[4],
-                "difficulty": row[5],
-                "status": row[6],
+                "jobDescription": row[4],
 
-                "currentTopic": row[7],
+                "interviewType": row[5],
+                "difficulty": row[6],
+                "status": row[7],
+
+                "currentTopic": row[8],
 
                 "topicsCovered": (
-                    row[8]
-                    if row[8] is not None
-                    else []
-                ),
-
-                "strengths": (
                     row[9]
                     if row[9] is not None
                     else []
                 ),
 
-                "weaknesses": (
+                "strengths": (
                     row[10]
                     if row[10] is not None
                     else []
                 ),
 
-                "followUpNeeded": row[11],
-
-                "interviewPhase": row[12],
-
-                "candidateName": row[13],
-                "candidateBio": row[14],
-                "candidateExperience": row[15],
-                "candidateSkills": (
-                    row[16]
-                    if row[16] is not None
+                "weaknesses": (
+                    row[11]
+                    if row[11] is not None
                     else []
                 ),
-                "resumeContent": row[17],
+
+                "followUpNeeded": row[12],
+
+                "interviewPhase": row[13],
+
+                "candidateName": row[14],
+                "candidateBio": row[15],
+                "candidateExperience": row[16],
+
+                "candidateSkills": (
+                    row[17]
+                    if row[17] is not None
+                    else []
+                ),
+
+                "resumeContent": row[18],
 
                 "messages": messages,
             }
