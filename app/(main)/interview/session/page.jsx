@@ -65,7 +65,7 @@ export default function InterviewSessionPage() {
           hasStartedRef.current = true;
 
           const startResponse = await fetch(
-            "http://127.0.0.1:8000/interview/start",
+            "/api/interview/ai/start",
             {
               method: "POST",
               headers: {
@@ -134,7 +134,7 @@ export default function InterviewSessionPage() {
       setSubmitting(true);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/interview",
+        "/api/interview/ai",
         {
           method: "POST",
           headers: {

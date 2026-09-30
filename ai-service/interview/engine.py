@@ -68,6 +68,82 @@ Prioritize information about:
 - experience gaps that are relevant to the current topic
 """.strip()
 
+    def _merge_topics(
+        self,
+        existing_topics,
+        suggested_topics,
+        current_topic,
+    ):
+        """
+        Merge topics deterministically.
+
+        The LLM may suggest topics, but Python owns the
+        authoritative interview state.
+        """
+
+        merged_topics = []
+
+        for topic in [
+            *(existing_topics or []),
+            *(suggested_topics or []),
+        ]:
+
+            if not topic:
+                continue
+
+            topic = str(topic).strip()
+
+            if not topic:
+                continue
+
+            if topic not in merged_topics:
+                merged_topics.append(topic)
+
+        if current_topic:
+            current_topic = str(
+                current_topic
+            ).strip()
+
+            if (
+                current_topic
+                and current_topic not in merged_topics
+            ):
+                merged_topics.append(
+                    current_topic
+                )
+
+        return merged_topics
+
+    def _merge_list(
+        self,
+        existing_items,
+        new_items,
+    ):
+        """
+        Merge LLM-provided state without allowing
+        previously recorded information to disappear.
+        """
+
+        merged_items = []
+
+        for item in [
+            *(existing_items or []),
+            *(new_items or []),
+        ]:
+
+            if not item:
+                continue
+
+            item = str(item).strip()
+
+            if not item:
+                continue
+
+            if item not in merged_items:
+                merged_items.append(item)
+
+        return merged_items
+
     def process_answer(self, answer):
 
         answer = answer.strip()
@@ -118,24 +194,41 @@ Prioritize information about:
             "NEXT_TOPIC",
         )
 
-        self.state.current_topic = result.get(
-            "currentTopic",
-            self.state.current_topic,
+        next_topic = result.get(
+            "currentTopic"
         )
 
-        self.state.topics_covered = result.get(
-            "topicsCovered",
-            self.state.topics_covered,
+        if next_topic:
+            self.state.current_topic = (
+                str(next_topic).strip()
+            )
+
+        self.state.topics_covered = (
+            self._merge_topics(
+                existing_topics=(
+                    self.state.topics_covered
+                ),
+                suggested_topics=(
+                    result.get("topicsCovered")
+                ),
+                current_topic=(
+                    self.state.current_topic
+                ),
+            )
         )
 
-        self.state.strengths = result.get(
-            "strengths",
-            self.state.strengths,
+        self.state.strengths = (
+            self._merge_list(
+                existing_items=self.state.strengths,
+                new_items=result.get("strengths"),
+            )
         )
 
-        self.state.weaknesses = result.get(
-            "weaknesses",
-            self.state.weaknesses,
+        self.state.weaknesses = (
+            self._merge_list(
+                existing_items=self.state.weaknesses,
+                new_items=result.get("weaknesses"),
+            )
         )
 
         self.state.follow_up_needed = result.get(

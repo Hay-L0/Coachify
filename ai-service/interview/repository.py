@@ -1,12 +1,47 @@
 import json
 import uuid
+from contextlib import contextmanager
 
 from db import get_connection
 
 
-def get_interview_session(session_id):
+@contextmanager
+def interview_lock(session_id):
+    """
+    Hold a PostgreSQL advisory transaction lock for one
+    interview session.
+
+    Any concurrent request for the same session waits until
+    the current request finishes.
+    """
 
     with get_connection() as connection:
+
+        with connection.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT pg_advisory_xact_lock(
+                    hashtextextended(%s, 0)
+                )
+                """,
+                (session_id,),
+            )
+
+        yield connection
+
+
+def get_interview_session(
+    session_id,
+    connection=None,
+):
+
+    owns_connection = connection is None
+
+    if owns_connection:
+        connection = get_connection()
+
+    try:
 
         with connection.cursor() as cursor:
 
@@ -86,53 +121,46 @@ def get_interview_session(session_id):
             return {
                 "id": row[0],
                 "userId": row[1],
-
                 "jobTitle": row[2],
                 "companyName": row[3],
                 "jobDescription": row[4],
-
                 "interviewType": row[5],
                 "difficulty": row[6],
                 "status": row[7],
-
                 "currentTopic": row[8],
-
                 "topicsCovered": (
                     row[9]
                     if row[9] is not None
                     else []
                 ),
-
                 "strengths": (
                     row[10]
                     if row[10] is not None
                     else []
                 ),
-
                 "weaknesses": (
                     row[11]
                     if row[11] is not None
                     else []
                 ),
-
                 "followUpNeeded": row[12],
-
                 "interviewPhase": row[13],
-
                 "candidateName": row[14],
                 "candidateBio": row[15],
                 "candidateExperience": row[16],
-
                 "candidateSkills": (
                     row[17]
                     if row[17] is not None
                     else []
                 ),
-
                 "resumeContent": row[18],
-
                 "messages": messages,
             }
+
+    finally:
+
+        if owns_connection:
+            connection.close()
 
 
 def update_interview_state(
@@ -143,9 +171,15 @@ def update_interview_state(
     weaknesses,
     follow_up_needed,
     interview_phase,
+    connection=None,
 ):
 
-    with get_connection() as connection:
+    owns_connection = connection is None
+
+    if owns_connection:
+        connection = get_connection()
+
+    try:
 
         with connection.cursor() as cursor:
 
@@ -172,16 +206,28 @@ def update_interview_state(
                 ),
             )
 
-        connection.commit()
+        if owns_connection:
+            connection.commit()
+
+    finally:
+
+        if owns_connection:
+            connection.close()
 
 
 def create_interview_message(
     session_id,
     role,
     content,
+    connection=None,
 ):
 
-    with get_connection() as connection:
+    owns_connection = connection is None
+
+    if owns_connection:
+        connection = get_connection()
+
+    try:
 
         with connection.cursor() as cursor:
 
@@ -195,7 +241,12 @@ def create_interview_message(
                         "content"
                     )
                 VALUES
-                    (%s, %s, %s, %s)
+                    (
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    )
                 RETURNING
                     "id",
                     "sessionId",
@@ -213,7 +264,8 @@ def create_interview_message(
 
             row = cursor.fetchone()
 
-        connection.commit()
+        if owns_connection:
+            connection.commit()
 
         return {
             "id": row[0],
@@ -223,10 +275,23 @@ def create_interview_message(
             "createdAt": row[4],
         }
 
+    finally:
 
-def complete_interview_session(session_id):
+        if owns_connection:
+            connection.close()
 
-    with get_connection() as connection:
+
+def complete_interview_session(
+    session_id,
+    connection=None,
+):
+
+    owns_connection = connection is None
+
+    if owns_connection:
+        connection = get_connection()
+
+    try:
 
         with connection.cursor() as cursor:
 
@@ -241,6 +306,12 @@ def complete_interview_session(session_id):
                 (session_id,),
             )
 
-        connection.commit()
+        if owns_connection:
+            connection.commit()
+
+    finally:
+
+        if owns_connection:
+            connection.close()
             
             

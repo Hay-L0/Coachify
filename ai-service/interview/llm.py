@@ -9,6 +9,22 @@ from google import genai
 load_dotenv()
 
 
+class LLMProviderError(Exception):
+
+    def __init__(
+        self,
+        message,
+        provider="unknown",
+        error_type="unknown",
+        retryable=False,
+    ):
+        super().__init__(message)
+
+        self.provider = provider
+        self.error_type = error_type
+        self.retryable = retryable
+
+
 class LLMProvider:
 
     def generate_response(
