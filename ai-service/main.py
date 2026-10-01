@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -13,10 +13,8 @@ from interview.repository import (
     update_interview_state,
     complete_interview_session,
 )
-from interview.llm import (
-    GeminiProvider,
-    LLMProviderError,
-)
+from interview.llm import LLMProviderError
+from interview.provider import ProviderRouter
 
 from rag.ingestion import KnowledgeIngestionService
 
@@ -39,6 +37,63 @@ app.add_middleware(
 class InterviewRequest(BaseModel):
     sessionId: str
     answer: str
+
+
+def handle_llm_error(error: LLMProviderError):
+    if error.error_type == "quota_exceeded":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": (
+                    "Jabari is temporarily unavailable "
+                    "because the current AI provider has "
+                    "reached its usage quota."
+                ),
+                "provider": error.provider,
+                "errorType": error.error_type,
+                "retryable": error.retryable,
+            },
+        )
+
+    if error.error_type == "temporary_failure":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": (
+                    "Jabari is temporarily unavailable. "
+                    "Please try again."
+                ),
+                "provider": error.provider,
+                "errorType": error.error_type,
+                "retryable": error.retryable,
+            },
+        )
+
+    if error.error_type == "invalid_response":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": (
+                    "Jabari received an invalid response "
+                    "from the AI provider."
+                ),
+                "provider": error.provider,
+                "errorType": error.error_type,
+                "retryable": error.retryable,
+            },
+        )
+
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "error": (
+                "Jabari is temporarily unavailable."
+            ),
+            "provider": error.provider,
+            "errorType": error.error_type,
+            "retryable": error.retryable,
+        },
+    )
 
 
 @app.get("/")
@@ -66,14 +121,16 @@ def start_interview(
         )
 
         if not session:
-            return {
-                "error": "Interview session not found"
-            }
+            raise HTTPException(
+                status_code=404,
+                detail="Interview session not found",
+            )
 
         if session["status"] != "IN_PROGRESS":
-            return {
-                "error": "Interview is not active"
-            }
+            raise HTTPException(
+                status_code=409,
+                detail="Interview is not active",
+            )
 
         if len(session["messages"]) > 0:
 
@@ -92,9 +149,10 @@ def start_interview(
                     "alreadyStarted": True,
                 }
 
-            return {
-                "error": "Interview has already started"
-            }
+            raise HTTPException(
+                status_code=409,
+                detail="Interview has already started",
+            )
 
         ingestion = KnowledgeIngestionService()
 
@@ -132,11 +190,15 @@ def start_interview(
             ],
         )
 
-        llm = GeminiProvider()
+        llm = ProviderRouter()
 
-        result = llm.generate_response(
-            state
-        )
+        try:
+            result = llm.generate_response(
+                state
+            )
+
+        except LLMProviderError as error:
+            handle_llm_error(error)
 
         response = result["response"]
 
@@ -213,9 +275,10 @@ def interview(
 ):
 
     if not request.answer.strip():
-        return {
-            "error": "Interview answer cannot be empty"
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="Interview answer cannot be empty",
+        )
 
     with interview_lock(
         request.sessionId
@@ -227,14 +290,16 @@ def interview(
         )
 
         if not session:
-            return {
-                "error": "Interview session not found"
-            }
+            raise HTTPException(
+                status_code=404,
+                detail="Interview session not found",
+            )
 
         if session["status"] != "IN_PROGRESS":
-            return {
-                "error": "Interview is not active"
-            }
+            raise HTTPException(
+                status_code=409,
+                detail="Interview is not active",
+            )
 
         state = InterviewState(
             session_id=request.sessionId,
@@ -265,31 +330,16 @@ def interview(
 
         engine = InterviewEngine(
             state,
-            GeminiProvider(),
+            ProviderRouter(),
         )
 
         try:
-
             result = engine.process_answer(
                 request.answer
             )
 
         except LLMProviderError as error:
-
-            if error.error_type == "quota_exceeded":
-
-                return {
-                    "error": (
-                        "Jabari is temporarily unavailable "
-                        "because the current AI provider has "
-                        "reached its usage quota."
-                    ),
-                    "provider": error.provider,
-                    "errorType": error.error_type,
-                    "retryable": error.retryable,
-                }
-
-            raise
+            handle_llm_error(error)
 
         response = result["response"]
 
@@ -319,7 +369,6 @@ def interview(
         )
 
         if result["action"] == "COMPLETE":
-
             complete_interview_session(
                 request.sessionId,
                 connection=connection,

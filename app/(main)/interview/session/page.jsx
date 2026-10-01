@@ -19,6 +19,8 @@ import { Loader2 } from "lucide-react";
 
 import { toast } from "sonner";
 
+import LiveKitTest from "./LiveKitTest";
+
 export default function InterviewSessionPage() {
   const searchParams = useSearchParams();
 
@@ -29,8 +31,11 @@ export default function InterviewSessionPage() {
   const sessionId = searchParams.get("id");
 
   const [session, setSession] = useState(null);
+
   const [answer, setAnswer] = useState("");
+
   const [loading, setLoading] = useState(true);
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -171,6 +176,7 @@ export default function InterviewSessionPage() {
       }
 
       setSession(sessionData);
+
       setAnswer("");
     } catch (error) {
       console.error(error);
@@ -205,12 +211,15 @@ export default function InterviewSessionPage() {
         </h1>
 
         <p className="text-muted-foreground mt-1">
-          {session.interviewType} • {session.difficulty}
-
+          {session.interviewType} •{" "}
+          {session.difficulty}
           {session.companyName &&
             ` • ${session.companyName}`}
         </p>
       </div>
+
+      {/* Temporary LiveKit connection test */}
+      <LiveKitTest />
 
       {/* Conversation */}
       <Card>
@@ -223,7 +232,8 @@ export default function InterviewSessionPage() {
         <CardContent className="space-y-4 max-h-[500px] overflow-y-auto">
           {session.messages?.length === 0 ? (
             <p className="text-muted-foreground">
-              Your interviewer will ask the first question shortly.
+              Your interviewer will ask the first
+              question shortly.
             </p>
           ) : (
             session.messages.map((message) => (
