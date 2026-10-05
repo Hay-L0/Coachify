@@ -57,7 +57,7 @@ async def entrypoint(ctx):
         ),
         tts=inworld.TTS(
             model="inworld-tts-2",
-            voice="Ashley",
+            voice="sage-mocha-0150__design-voice-613b0a37",
         ),
     )
 
