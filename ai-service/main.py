@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from interview.voice_service import VoiceInterviewService
 
 from auth import verify_ai_service_key
 
@@ -102,6 +103,30 @@ def root():
         "message": "Coachify AI service is running"
     }
 
+voice_interview_service = VoiceInterviewService()
+
+
+@app.post("/interview/voice")
+def voice_interview(
+    request: InterviewRequest,
+    authenticated: bool = Depends(
+        verify_ai_service_key
+    ),
+):
+    try:
+        return voice_interview_service.process_answer(
+            session_id=request.sessionId,
+            answer=request.answer,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except LLMProviderError as error:
+        handle_llm_error(error)
 
 @app.post("/interview/start")
 def start_interview(
