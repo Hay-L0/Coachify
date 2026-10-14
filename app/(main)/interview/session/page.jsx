@@ -219,7 +219,7 @@ export default function InterviewSessionPage() {
       </div>
 
       {/* Temporary LiveKit connection test */}
-      <LiveKitTest />
+      <LiveKitTest sessionId={sessionId} />
 
       {/* Conversation */}
       <Card>

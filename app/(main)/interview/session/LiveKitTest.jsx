@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import {
   SessionProvider,
@@ -23,10 +24,19 @@ const tokenSource = tokenServerId
 
 function JabariConnection() {
   const agent = useAgent();
-
   const state = agent.state || "connecting";
 
   const isFailed = state === "failed";
+
+  const statusText = {
+    connecting: "Connecting to Jabari...",
+    initializing: "Jabari is preparing...",
+    listening: "Listening...",
+    thinking: "Thinking...",
+    speaking: "Speaking...",
+    disconnected: "Session ended",
+    failed: "Jabari encountered an error",
+  };
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -48,21 +58,7 @@ function JabariConnection() {
         <p className="font-semibold">Jabari</p>
 
         <p className="text-sm text-muted-foreground">
-          {state === "connecting"
-            ? "Connecting to Jabari..."
-            : state === "initializing"
-              ? "Jabari is preparing..."
-              : state === "listening"
-                ? "Listening..."
-                : state === "thinking"
-                  ? "Thinking..."
-                  : state === "speaking"
-                    ? "Speaking..."
-                    : state === "disconnected"
-                      ? "Session ended"
-                      : state === "failed"
-                        ? "Jabari encountered an error"
-                        : state}
+          {statusText[state] || state}
         </p>
 
         {isFailed && agent.failureReasons?.length > 0 && (
@@ -77,7 +73,15 @@ function JabariConnection() {
   );
 }
 
-export default function LiveKitTest() {
+export default function LiveKitTest({ sessionId }) {
+  if (!sessionId) {
+    return (
+      <div className="rounded-xl border p-4 text-sm">
+        Interview session ID is missing.
+      </div>
+    );
+  }
+
   if (!tokenSource) {
     return (
       <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
@@ -86,18 +90,16 @@ export default function LiveKitTest() {
     );
   }
 
-  return <JabariSession />;
+  return <JabariSession sessionId={sessionId} />;
 }
 
-function JabariSession() {
-  const id = useId();
-
+function JabariSession({ sessionId }) {
   const sessionOptions = useMemo(
     () => ({
-      roomName: `coachify-jabari-${id}`,
+      roomName: `coachify-jabari-${sessionId}`,
       agentName: "jabari",
     }),
-    [id]
+    [sessionId]
   );
 
   const session = useSession(tokenSource, sessionOptions);
@@ -105,15 +107,18 @@ function JabariSession() {
   useEffect(() => {
     let cancelled = false;
 
-    const startSession = async () => {
+    async function startSession() {
       try {
         await session.start();
       } catch (error) {
         if (!cancelled) {
-          console.error("JABARI SESSION START FAILED:", error);
+          console.error(
+            "JABARI SESSION START FAILED:",
+            error
+          );
         }
       }
-    };
+    }
 
     startSession();
 
@@ -121,6 +126,8 @@ function JabariSession() {
       cancelled = true;
       void session.end();
     };
+    // The session should be started once per mounted session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
