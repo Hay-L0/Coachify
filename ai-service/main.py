@@ -1,10 +1,9 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from interview.voice_service import VoiceInterviewService
 
 from auth import verify_ai_service_key
-
+from interview.voice_service import VoiceInterviewService
 from interview.state import InterviewState
 from interview.engine import InterviewEngine
 from interview.repository import (
@@ -16,12 +15,10 @@ from interview.repository import (
 )
 from interview.llm import LLMProviderError
 from interview.provider import ProviderRouter
-
 from rag.ingestion import KnowledgeIngestionService
 
 
 app = FastAPI()
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,9 +84,7 @@ def handle_llm_error(error: LLMProviderError):
     raise HTTPException(
         status_code=503,
         detail={
-            "error": (
-                "Jabari is temporarily unavailable."
-            ),
+            "error": "Jabari is temporarily unavailable.",
             "provider": error.provider,
             "errorType": error.error_type,
             "retryable": error.retryable,
@@ -103,6 +98,11 @@ def root():
         "message": "Coachify AI service is running"
     }
 
+
+# --------------------------------------------------
+# Voice interview endpoint
+# --------------------------------------------------
+
 voice_interview_service = VoiceInterviewService()
 
 
@@ -113,6 +113,12 @@ def voice_interview(
         verify_ai_service_key
     ),
 ):
+    if not request.answer.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Interview answer cannot be empty",
+        )
+
     try:
         return voice_interview_service.process_answer(
             session_id=request.sessionId,
@@ -120,13 +126,32 @@ def voice_interview(
         )
 
     except ValueError as error:
+        message = str(error)
+
+        if message == "Interview session not found":
+            raise HTTPException(
+                status_code=404,
+                detail=message,
+            )
+
+        if message == "Interview is not active":
+            raise HTTPException(
+                status_code=409,
+                detail=message,
+            )
+
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail=message,
         )
 
     except LLMProviderError as error:
         handle_llm_error(error)
+
+
+# --------------------------------------------------
+# Start an interview
+# --------------------------------------------------
 
 @app.post("/interview/start")
 def start_interview(
@@ -135,7 +160,6 @@ def start_interview(
         verify_ai_service_key
     ),
 ):
-
     with interview_lock(
         request.sessionId
     ) as connection:
@@ -158,7 +182,6 @@ def start_interview(
             )
 
         if len(session["messages"]) > 0:
-
             first_message = next(
                 (
                     message
@@ -207,20 +230,14 @@ def start_interview(
             topics_covered=session["topicsCovered"],
             strengths=session["strengths"],
             weaknesses=session["weaknesses"],
-            follow_up_needed=session[
-                "followUpNeeded"
-            ],
-            interview_phase=session[
-                "interviewPhase"
-            ],
+            follow_up_needed=session["followUpNeeded"],
+            interview_phase=session["interviewPhase"],
         )
 
         llm = ProviderRouter()
 
         try:
-            result = llm.generate_response(
-                state
-            )
+            result = llm.generate_response(state)
 
         except LLMProviderError as error:
             handle_llm_error(error)
@@ -291,6 +308,10 @@ def start_interview(
         }
 
 
+# --------------------------------------------------
+# Text interview endpoint
+# --------------------------------------------------
+
 @app.post("/interview")
 def interview(
     request: InterviewRequest,
@@ -298,7 +319,6 @@ def interview(
         verify_ai_service_key
     ),
 ):
-
     if not request.answer.strip():
         raise HTTPException(
             status_code=400,
@@ -345,12 +365,8 @@ def interview(
             topics_covered=session["topicsCovered"],
             strengths=session["strengths"],
             weaknesses=session["weaknesses"],
-            follow_up_needed=session[
-                "followUpNeeded"
-            ],
-            interview_phase=session[
-                "interviewPhase"
-            ],
+            follow_up_needed=session["followUpNeeded"],
+            interview_phase=session["interviewPhase"],
         )
 
         engine = InterviewEngine(
