@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -12,20 +11,13 @@ import {
 } from "@livekit/components-react";
 
 import { TokenSource } from "livekit-client";
-
 import "@livekit/components-styles";
 
-const tokenServerId =
-  process.env.NEXT_PUBLIC_LIVEKIT_TOKEN_SERVER_ID;
-
-const tokenSource = tokenServerId
-  ? TokenSource.developmentTokenServer(tokenServerId)
-  : null;
+const tokenSource = TokenSource.endpoint("/api/livekit/token");
 
 function JabariConnection() {
   const agent = useAgent();
   const state = agent.state || "connecting";
-
   const isFailed = state === "failed";
 
   const statusText = {
@@ -82,14 +74,6 @@ export default function LiveKitTest({ sessionId }) {
     );
   }
 
-  if (!tokenSource) {
-    return (
-      <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-        NEXT_PUBLIC_LIVEKIT_TOKEN_SERVER_ID is not configured.
-      </div>
-    );
-  }
-
   return <JabariSession sessionId={sessionId} />;
 }
 
@@ -112,21 +96,19 @@ function JabariSession({ sessionId }) {
         await session.start();
       } catch (error) {
         if (!cancelled) {
-          console.error(
-            "JABARI SESSION START FAILED:",
-            error
-          );
+          console.error("JABARI SESSION START FAILED:", error);
         }
       }
     }
 
-    startSession();
+    void startSession();
 
     return () => {
       cancelled = true;
       void session.end();
     };
-    // The session should be started once per mounted session.
+    // LiveKit's Session API example starts and ends the session
+    // once per component mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
